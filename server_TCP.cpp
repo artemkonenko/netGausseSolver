@@ -12,19 +12,14 @@
 #include <unistd.h>
 #include <vector>
 
+#include "util.h"
 
 using namespace std;
-
-void handleError(string msg)
-{
-    cerr << msg << " error code " << errno << " (" << strerror(errno) << ")\n";
-    exit(1);
-}
 
 vector<double> gausse_solve( vector<vector<double> >& matrix, vector<double>& k, const bool debug )
 {
 	vector<double> ret(k.size());
-	
+
 	for ( int i=0; i < matrix.size(); ++i )
 	{
 		// Делаем первый символ лидирующим
