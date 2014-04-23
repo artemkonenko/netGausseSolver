@@ -14,13 +14,41 @@
 
 using namespace std;
 
+void read_matrix ( int &width, int &height, double* &matrix, double* &k )
+{
+  scanf("%d %d", &width, &height);
+  matrix = (double*)malloc( sizeof(double) * height*width );
+  k = (double*)malloc( sizeof(double) * height );
+  for ( int i=0; i < width; ++i )
+    for ( int j=0; j < height; ++j )
+      scanf("%lf", &matrix[ linearization(i, j, width) ]);
+  
+  for ( int j=0; j < height; ++j )
+      scanf("%lf", &k[j]);
+}
+
+void send_task_and_get_answer(int ConnectSocket, int width, int height, double* matrix, double* k, double* answer )
+{
+  // отправляем запрос на сервер
+  send( ConnectSocket, &width,  sizeof(int), 0 );
+  send( ConnectSocket, &height, sizeof(int), 0 );
+  send( ConnectSocket, matrix,  sizeof(double) * height*width, 0 );
+  send( ConnectSocket, k,       sizeof(double) * height, 0 );
+  
+  recv( ConnectSocket, answer, sizeof(double) * height, 0);
+}
+
 int main( int argc, char* argv[] )
 {
-	int port = 9753;
-  string addr = "127.0.0.1";
+  int port = 9753; // порт сервера
+  string addr = "127.0.0.1"; // адрес сервера
+  ConnectionType contype = TCPconnect; // Тип соединения с сервером
+  int ConnectSocket;  // сокет для общения с сервером
+  sockaddr_in ServerAddr;  // это будет адрес сервера
+  int err;  // код ошибки
 
   char c;
-  while ((c = getopt (argc, argv, "p:a:i:o:")) != -1)
+  while ((c = getopt (argc, argv, "tuhp:a:i:o:")) != -1)
     switch (c)
     {
       case 'p':
@@ -35,6 +63,19 @@ int main( int argc, char* argv[] )
       case 'o':
         freopen(optarg, "w", stdout);
         break;
+      case 't':
+        contype = TCPconnect;
+        break;
+      case 'u':
+        contype = UDPconnect;
+        break;
+      case 'h':
+        cout << "Usage: client [-p port] [-a ip] [-i input_filepath] [-o output_filepath]"<< endl;
+        cout << "-t to conection over TCP"<< endl;
+        cout << "-u to connection over UDP"<< endl;
+        cout << "-h for this help."<< endl;
+        return 0;
+        break;
       case '?':
         if ( optopt == 'p' || optopt == 'a' || optopt == 'i' || optopt == 'o')
           fprintf (stderr, "Option -%c requires an argument.\n", optopt);
@@ -47,46 +88,36 @@ int main( int argc, char* argv[] )
         abort ();
     }
 
-  int ConnectSocket;  // сокет для общения с сервером
-  sockaddr_in ServerAddr;  // это будет адрес сервера
-  int err, maxlen = 512;  // код ошибки и размер буферов
-  char* recvbuf = new char[maxlen+1];  // буфер приема
-
-  ConnectSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  switch( contype )
+  {
+    case TCPconnect:
+      ConnectSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+      break;
+    case UDPconnect:
+      ConnectSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+      break;
+  }
 
   ServerAddr.sin_family = AF_INET;
   //используйте функцию gethostbyname для подключения к серверу по DNS-имени
   ServerAddr.sin_addr.s_addr = inet_addr(addr.c_str());
   ServerAddr.sin_port = htons(port);
-
-	int width, height;
-  scanf("%d %d", &width, &height);
-	double* matrix = (double*)malloc( sizeof(double) * height*width );
-	double* k      = (double*)malloc( sizeof(double) * height );
-	
-	for ( int i=0; i < width; ++i )
-		for ( int j=0; j < height; ++j )
-			scanf("%lf", &matrix[ linearization(i, j, width) ]);
-	
-	for ( int j=0; j < height; ++j )
-			scanf("%lf", &k[j]);
-	
-    // Connect to server
+  // Connect to server
   if( connect( ConnectSocket, (sockaddr *) &ServerAddr, sizeof(ServerAddr)) == -1)
     handleError("connect failed:");
-		
-    // отправляем запрос на сервер
-	send( ConnectSocket, &width,  sizeof(width), 0 );
-	send( ConnectSocket, &height, sizeof(height), 0 );
-	send( ConnectSocket, matrix,  sizeof(double) * height*width, 0 );
-	send( ConnectSocket, k,       sizeof(double) * height, 0 );
-	
-	double* answer = (double*)malloc( sizeof(double) * height );
-  recv(ConnectSocket, answer, sizeof(double) * height, 0);
-	for ( int j=0; j < height; ++j )
-	{
-		printf( "%s%lf", j > 0 ? " " : "", answer[j]);
-	}
+
+  int width, height;
+  double *matrix, *k;
+  read_matrix(width, height, matrix, k);
+  
+  double* answer = (double*)malloc( sizeof(double) * height );
+
+  send_task_and_get_answer(ConnectSocket, width, height, matrix, k, answer );
+  
+  for ( int j=0; j < height; ++j )
+  {
+    printf( "%s%lf", j > 0 ? " " : "", answer[j]);
+  }
   printf("\n");
 
 

@@ -16,52 +16,44 @@
 
 using namespace std;
 
-vector<double> gausse_solve( vector<vector<double> >& matrix, vector<double>& k, const bool debug )
+double* gausse_solve( double* matrix, double* k, int width, int height, const bool debug )
 {
-	vector<double> ret(k.size());
+	double* ret = (double*)malloc( sizeof(double) * height );
 
-	for ( int i=0; i < matrix.size(); ++i )
+	for ( int i=0; i < height; ++i )
 	{
 		// Делаем первый символ лидирующим
-		for ( int j=i+1; j < matrix.size(); ++j )
+		for ( int j=i+1; j < width; ++j )
 		{
-			if ( matrix[j][i] != 0 )
+			if ( matrix[ linearization(i, j, width) ] != 0 )
 			{
-				double koef = matrix[i][i] / matrix[j][i];
+				double koef = matrix[linearization(i, i, width)] / matrix[linearization(j, i, width)];
 				if ( debug )
 					cout << "k = " << koef << " (" << i << ", " << j << ") " << endl;
-				for ( int l=i; l < matrix[0].size(); l++ )
-				{
-					if ( debug )
-					{
-						cout<<"M["<<j<<"]["<<l<<"] = M["<<j<<"]["<<l<<"]*M["<<i<<"]["<<i<<"]/M["<<j<<"]["<<i<<"]-M["<<i<<"]["<<l<<"] = ";
-						cout<<matrix[j][l]<<" * "<<koef<<" - "<<matrix[i][l] << " = " << matrix[j][l] * koef - matrix[i][l] << endl;
-					}
-					matrix[j][l] = matrix[j][l] * koef - matrix[i][l];
-				}
+				for ( int l=i; l < width; l++ )
+					matrix[linearization(j, l, width)] = matrix[linearization(j, l, width)] * koef - matrix[linearization(i, l, width)];
 				k[j] = k[j] * koef - k[i];
 			}
 		}
 	}
 	
-	for ( int i=matrix.size()-1; i >= 0; --i )
+	for ( int i=height-1; i >= 0; --i )
 	{
 		ret[i] = k[i];
-		for ( int j=matrix[0].size()-1; j > i; --j )
+		for ( int j=width-1; j > i; --j )
 		{
-			ret[i] -= matrix[i][j] * ret[j];
+			ret[i] -= matrix[linearization(i, j, width)] * ret[j];
 		}
-		ret[i] /= matrix[i][i];
+		ret[i] /= matrix[linearization(i, i, width)];
 	}
 
 	if ( debug )	
-		for ( int i=0; i < k.size(); ++i )
+		for ( int i=0; i < height; ++i )
 		{
-			for ( int j=0; j < k.size(); ++j )
-				cout << matrix[i][j] << " ";
+			for ( int j=0; j < height; ++j )
+				cout << matrix[linearization(i, j, width)] << " ";
 
-			cout << "| " << k[i] << " -> " << ret[i];
-			cout << endl;
+			cout << "| " << k[i] << " -> " << ret[i] << endl;
 		}
 	
 	return ret;
@@ -100,9 +92,9 @@ int main( int argc, char* argv[] )
 
     int ListenSocket, ClientSocket;  // впускающий сокет и сокет для клиентов
     sockaddr_in ServerAddr;  // это будет адрес сервера
-    int err, maxlen = 512;  // код ошибки и размер буферов
-    char* recvbuf=new char[maxlen+1];  // буфер приема
-    char* result_string=new char[maxlen];  // буфер отправки
+    int err, maxlen 	= 	512;  // код ошибки и размер буферов
+    char* recvbuf 		=	new char[maxlen+1];  // буфер приема
+    char* result_string = 	new char[maxlen];  // буфер отправки
 
     // Create a SOCKET for connecting to server
     ListenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -130,61 +122,30 @@ int main( int argc, char* argv[] )
 		if (debug)
 			cout << "Serverside: " << width << "x" << height << endl;
 		
-		vector<vector<double> > matrix(height, vector<double>(width));
-		vector<double> k(height);
-		
-		if (debug)
-			cout << "Serverside matrix: " << endl;
+		double* matrix = (double*)malloc( sizeof(double) * height*width );
+		double* k	   = (double*)malloc( sizeof(double) * height );
 
-		for ( int i=0; i < height; ++i )
-		{
-			for ( int j=0; j < width; ++j )
-			{
-				recv(ClientSocket, &matrix[i][j], sizeof(matrix[i][j]), 0);
-				if (debug)
-					cout << matrix[i][j] << " ";
-			}
-			if ( debug )
-				cout << endl;
-		}
-		if (debug)
-			cout << "[";
-		for ( int j=0; j < height; ++j )
-		{
-			recv(ClientSocket, &k[j], sizeof(k[j]), 0);
-			if (debug)
-				cout << k[j] << " ";
-		}
-		if (debug)
-			cout << "]" << endl;
+		recv(ClientSocket, matrix, sizeof(double) * width*height, 0);
+		recv(ClientSocket, k, sizeof(double) * height, 0);
 		
-		
-		vector<double> answer = gausse_solve(matrix, k, debug);
-		
-		if ( debug )
-		{
-			cout << "Answer: [";
-			for (int i = 0; i < answer.size(); ++i)
-			{
-				cout << (i > 0 ? ", " : "") << answer[i];
-			}
-			cout << "]" << endl;
+		double* answer = gausse_solve(matrix, k, width, height, debug);
 
-		}
+		if (debug)
+			print_matrix(matrix, k, answer, width, height);
 
 		for ( int j=0; j < height; ++j )
 		{
-			send( ClientSocket,  &answer[j], sizeof(answer[j]), 0 );
+			send( ClientSocket,  answer, sizeof(double) * height, 0 );
 		}
 		
 		if (debug)
-        	cout << "Send answer complete" << endl;
+        	cout << "Send answer complete." << endl;
 
         // закрываем соединение с клиентом
         close(ClientSocket);
 
         if ( debug )
-        	cout << "============================================================";
+        	cout << "============================================================" << endl;
     }
     return 0;
 }
