@@ -2,7 +2,7 @@
 CC=g++
 #Это еще один комментарий. Он поясняет, что в переменной CFLAGS лежат флаги, которые передаются компилятору
 #CFLAGS=-c -Wall
-CFLAGS=-c
+CFLAGS=-c -std=c++11
 
 all: server client
 

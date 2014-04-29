@@ -1,14 +1,17 @@
-#include <arpa/inet.h>
-#include <string.h>
+// For somethings
 #include <errno.h>
 #include <getopt.h>
 #include <iostream>
-#include <netdb.h>
-#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <sys/socket.h>
+#include <string.h>
 #include <unistd.h>
+
+// For network
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 #include "util.h"
 
@@ -25,7 +28,7 @@ void handleError(std::string msg)
     exit(1);
 }
 
-void print_matrix(double* matrix, double* k, double* answer, int width, int height)
+void print_matrix(const double* matrix, const double* k, const double* answer, const int width, const int height)
 {
 	for (int i = 0; i < height; ++i)
 	{
