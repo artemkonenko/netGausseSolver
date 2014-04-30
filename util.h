@@ -20,7 +20,8 @@ int linearization(int i, int j, int width);
 
 void handleError(std::string msg);
 
-void print_matrix(const double* matrix, const double* k, const double* answer, const int width, const int height);
+void print_matrix(const double* matrix, const double* k, const double* answer,
+					const int width, const int height);
 
 class NetworkChatHelper
 {
@@ -176,6 +177,112 @@ public:
 	}
 };
 
+class BridgeWrapper
+{
+	ConnectionType m_contype;
+	sockaddr_in m_ServerAddr;
+	int m_ConnectSocket;
+	int m_UDP_counter;
+
+public:
+	BridgeWrapper( ConnectionType contype,
+					 int ListenSocket):m_contype(contype)
+	{
+
+		if ( getConntype() == TCPconnect )
+		{
+			// Accept a client socket
+			m_ConnectSocket = accept(ListenSocket, NULL, NULL);
+		}
+		else
+		{
+
+		}
+
+		std::cout << "Bridge created." << std::endl;
+	}
+
+	ConnectionType getConntype() const
+	{
+		return m_contype;
+	}
+
+	int getIncUPDcounter()
+	{
+		return ++m_UDP_counter;
+	}
+
+	template<typename T>
+	void send( T* data, size_t datalength )
+	{
+		if ( m_contype == TCPconnect)
+		{
+		  	::send( m_ConnectSocket, data, sizeof(T) * datalength, 0 );
+		}
+		else
+		{
+			T* buffer = (T*)(malloc( sizeof(T) * (datalength + 1) ));
+
+			int cur_package = getIncUPDcounter();
+			std::cout << "Sender(UDP) send package with seq: " << cur_package << "..." << std::endl;
+			//(const_cast<int*>(buffer))[0] = cur_package;
+			((int*)buffer)[0] = cur_package;
+			std::copy( data, data + datalength, buffer + 1 ); // Копируем со сдвигом.
+			int err = 0;
+		    while (err == 0)
+		    {
+		        // отправляем запрос на сервер
+		        sendto( m_ConnectSocket, data, sizeof(T) * (datalength+1), 0, (sockaddr *)&m_ServerAddr, sizeof(m_ServerAddr));
+
+		        // проверяем, получен ли результат
+		        struct timeval timeToWaitAnswer; 
+		        timeToWaitAnswer.tv_sec = 1; timeToWaitAnswer.tv_usec = 0; //ждем максимум 1 секунду
+		        fd_set fds; FD_ZERO(&fds); FD_SET(m_ConnectSocket, &fds); //file descriptor set
+		        err = select(m_ConnectSocket+1, &fds, 0, 0, &timeToWaitAnswer);
+		        if (err < 0)
+		        	handleError("select failed:");
+		        if (err == 0)
+		            std::cout << "Packet was lost. Another attempt.\n";
+		    }
+		    int ack;
+		    err = recvfrom(m_ConnectSocket, &ack, sizeof(int), 0, 0, 0);
+		    std::cout << "Sender(UDP) recv ack: " << ack << "!" << std::endl;
+
+		}
+	}
+
+	template<typename T>
+	void recv( T* data, size_t datalength )
+	{
+		if ( m_contype == TCPconnect )
+		{
+		  	::recv( m_ConnectSocket, data, sizeof(T) * datalength, 0 );
+		}
+		else
+		{
+			int err = recvfrom( m_ConnectSocket, data, sizeof(T) * datalength, 0, 0, 0 );
+		    if (err == 0) 
+		    	handleError("recv failed:");
+		}
+	}
+
+	~BridgeWrapper()
+	{
+		if ( m_contype == TCPconnect )
+		{
+			// закрываем соединение с клиентом
+		    close(m_ConnectSocket);
+		}
+		else
+		{
+
+		}
+
+		std::cout << "Bridge droped." << std::endl;
+	}
+	
+};
+
 class Gate: public NetworkChatHelper
 {
 
@@ -185,7 +292,7 @@ public:
 		  ConnectionType contype = TCPconnect):NetworkChatHelper(port, addr, TCPconnect)
 	{}
 
-	void bind( void (*handler)(int)  )
+	void bind( void (*handler)(BridgeWrapper)  )
 	{
 		int ListenSocket, ClientSocket;  // впускающий сокет и сокет для клиентов
 	    sockaddr_in ServerAddr;  // это будет адрес сервера
@@ -203,7 +310,8 @@ public:
 	    	ListenSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	    }
 	    int on = 1;
-	    if (setsockopt(SendRecvSocket, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1)
+	    if (setsockopt(ListenSocket, SOL_SOCKET,
+	    				SO_REUSEADDR, &on, sizeof(on)) == -1)
 	        handleError("setsockopt failed:");
 
 	    // Setup the TCP listening socket
@@ -213,17 +321,14 @@ public:
 	    
 	    if (::bind( ListenSocket, (sockaddr *) &ServerAddr, sizeof(ServerAddr)) == -1) 
 	        handleError("bind failed:");
-	    if (listen(ListenSocket, 50) == -1) 
+	    
+	    if ( getConntype() == TCPconnect && listen(ListenSocket, 50) == -1) 
 	        handleError("listen failed:");
+
 	    while (true) 
 	    {
-	        // Accept a client socket
-	        ClientSocket = accept(ListenSocket, NULL, NULL);
-			
-			handler( ClientSocket );
-
-	        // закрываем соединение с клиентом
-	        close(ClientSocket);
+			handler( BridgeWrapper(getConntype(), ListenSocket) );
+	        
 
         	std::cout << "============================================================" << std::endl;
 	    }

@@ -6,20 +6,20 @@ CFLAGS=-c -std=c++11
 
 all: server client
 
-server: server_TCP.o util.o
-	$(CC) server_TCP.o util.o -o server_TCP
+server: server.o util.o
+	$(CC) server.o util.o -o server
 
-client: client_TCP.o util.o
-	$(CC) client_TCP.o util.o -o client_TCP
+client: client.o util.o
+	$(CC) client.o util.o -o client
 
-util.o: util.cpp
+util.o: util.h util.cpp
 	$(CC) $(CFLAGS) util.cpp
 
-server_TCP.o: server_TCP.cpp
-	$(CC) $(CFLAGS) server_TCP.cpp
+server.o: server.cpp util.h util.cpp
+	$(CC) $(CFLAGS) server.cpp
 
-client_TCP.o: client_TCP.cpp
-	$(CC) $(CFLAGS) client_TCP.cpp
+client.o: client.cpp util.h util.cpp
+	$(CC) $(CFLAGS) client.cpp
 
 clean:
-	rm -rf *.o server_TCP client_TCP
+	rm -rf *.o

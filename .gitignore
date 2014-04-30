@@ -1,0 +1,10 @@
+*.pro
+*.pro.*
+.idea
+*.vcxproj*
+*.opensdf
+*.suo
+.idea
+*.sdf
+*.sublime-project
+*.sublime-workspace
