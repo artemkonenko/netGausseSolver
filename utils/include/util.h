@@ -16,12 +16,16 @@ enum ConnectionType {
 	UDPconnect
 };
 
+struct Size
+{
+	int width, height;
+};
+
 int linearization(int i, int j, int width);
 
 void handleError(std::string msg);
 
-void print_matrix(const double* matrix, const double* k, const double* answer,
-					const int width, const int height);
+void print_matrix(const double* matrix, const double* answer, const int width, const int height);
 
 class NetworkChatHelper
 {
@@ -135,8 +139,7 @@ public:
 
 			int cur_package = getIncUPDcounter();
 			std::cout << "Sender(UDP) send package with seq: " << cur_package << "..." << std::endl;
-			//(const_cast<int*>(buffer))[0] = cur_package;
-			((int*)buffer)[0] = cur_package;
+			reinterpret_cast<int*>(buffer)[0] = cur_package;
 			std::copy( data, data + datalength, buffer + 1 ); // Копируем со сдвигом.
 			int err = 0;
 		    while (err == 0)
@@ -173,6 +176,9 @@ public:
 			int err = recvfrom( m_ConnectSocket, data, sizeof(T) * datalength, 0, 0, 0 );
 		    if (err == 0) 
 		    	handleError("recv failed:");
+			else
+			    sendto( m_ConnectSocket, data, sizeof(T) * datalength, 0, (sockaddr *)&m_ServerAddr, sizeof(m_ServerAddr));
+
 		}
 	}
 };
@@ -180,7 +186,8 @@ public:
 class BridgeWrapper
 {
 	ConnectionType m_contype;
-	sockaddr_in m_ServerAddr;
+	sockaddr_in m_ClientAddr;
+	unsigned int m_ClientAddrSize;
 	int m_ConnectSocket;
 	int m_UDP_counter;
 
@@ -188,7 +195,6 @@ public:
 	BridgeWrapper( ConnectionType contype,
 					 int ListenSocket):m_contype(contype)
 	{
-
 		if ( getConntype() == TCPconnect )
 		{
 			// Accept a client socket
@@ -196,7 +202,7 @@ public:
 		}
 		else
 		{
-
+			m_ConnectSocket = ListenSocket;
 		}
 
 		std::cout << "Bridge created." << std::endl;
@@ -232,7 +238,7 @@ public:
 		    while (err == 0)
 		    {
 		        // отправляем запрос на сервер
-		        sendto( m_ConnectSocket, data, sizeof(T) * (datalength+1), 0, (sockaddr *)&m_ServerAddr, sizeof(m_ServerAddr));
+		        sendto( m_ConnectSocket, data, sizeof(T) * (datalength+1), 0, (sockaddr *)&m_ClientAddr, m_ClientAddrSize);
 
 		        // проверяем, получен ли результат
 		        struct timeval timeToWaitAnswer; 
@@ -252,17 +258,28 @@ public:
 	}
 
 	template<typename T>
-	void recv( T* data, size_t datalength )
+	void recv( T* data, size_t maxdatalength )
 	{
+
 		if ( m_contype == TCPconnect )
 		{
-		  	::recv( m_ConnectSocket, data, sizeof(T) * datalength, 0 );
+			::recv( m_ConnectSocket, data, sizeof(double), 0 ); // Прочли размер
+			std::cout << "BW::recv: w:" << reinterpret_cast<int*>(data)[0] << " h:" << reinterpret_cast<int*>(data)[1] << std::endl;
+			int recievd = 1;
+			std::cout << "BW::recv: recievd=" << recievd << std::endl;
+			while ( recievd < (reinterpret_cast<int*>(data)[0]+1) * reinterpret_cast<int*>(data)[1] )
+			{
+				recievd += ::recv(m_ConnectSocket, data + recievd, sizeof(T) * ((reinterpret_cast<int*>(data)[0]+1) * reinterpret_cast<int*>(data)[1] - recievd + 1), 0) / sizeof(double);
+				std::cout << "BW::recv: recievd=" << recievd << std::endl;
+			}
 		}
 		else
 		{
-			int err = recvfrom( m_ConnectSocket, data, sizeof(T) * datalength, 0, 0, 0 );
+			int err = recvfrom( m_ConnectSocket, data, sizeof(T) * maxdatalength, 0, (sockaddr *)&m_ClientAddr, &m_ClientAddrSize );
 		    if (err == 0) 
 		    	handleError("recv failed:");
+			else
+			    sendto( m_ConnectSocket, data, sizeof(T) * maxdatalength, 0, (sockaddr *)&m_ClientAddr, m_ClientAddrSize);
 		}
 	}
 
@@ -310,8 +327,7 @@ public:
 	    	ListenSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	    }
 	    int on = 1;
-	    if (setsockopt(ListenSocket, SOL_SOCKET,
-	    				SO_REUSEADDR, &on, sizeof(on)) == -1)
+	    if (setsockopt(ListenSocket, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) == -1)
 	        handleError("setsockopt failed:");
 
 	    // Setup the TCP listening socket

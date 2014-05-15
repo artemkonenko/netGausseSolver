@@ -16,60 +16,52 @@
 
 using namespace std;
 
-double* gausse_solve( double* matrix, double* k, int width, int height)
+double* gausse_solve( double* matrix, int width, int height)
 {
 	double* ret = (double*)malloc( sizeof(double) * height );
 
 	for ( int i=0; i < height; ++i )
 	{
 		// Делаем первый символ лидирующим
-		for ( int j=i+1; j < width; ++j )
+		for ( int j=i+1; j < height; ++j )
 		{
-			if ( matrix[ linearization(i, j, width) ] != 0 )
+			if ( matrix[ linearization(j, i, width+1) ] != 0 )
 			{
-				double koef = matrix[linearization(i, i, width)] / matrix[linearization(j, i, width)];
+				double koef = matrix[linearization(i, i, width+1)] / matrix[linearization(j, i, width+1)];
 
-				for ( int l=i; l < width; l++ )
-					matrix[linearization(j, l, width)] = matrix[linearization(j, l, width)] * koef - matrix[linearization(i, l, width)];
-				k[j] = k[j] * koef - k[i];
+				for ( int l=i; l <= width; l++ )
+					matrix[linearization(j, l, width+1)] = matrix[linearization(j, l, width+1)] * koef - matrix[linearization(i, l, width+1)];
 			}
 		}
 	}
 	
 	for ( int i=height-1; i >= 0; --i )
 	{
-		ret[i] = k[i];
+		ret[i] = matrix[linearization(i, width, width+1)];
 		for ( int j=width-1; j > i; --j )
 		{
-			ret[i] -= matrix[linearization(i, j, width)] * ret[j];
+			ret[i] -= matrix[linearization(i, j, width+1)] * ret[j];
 		}
-		ret[i] /= matrix[linearization(i, i, width)];
+		ret[i] /= matrix[linearization(i, i, width+1)];
 	}
 	
 	return ret;
 }
 
+int maxBufferWidth = 100;
+int maxBufferHeight= 100;
+
 void handle( BridgeWrapper bw )
 {
-	int width, height;
-	bw.recv( &width, 1 );
-	bw.recv( &height, 1 );
+	double* matrix = (double*)malloc( sizeof(double) * (maxBufferWidth * maxBufferHeight +1) );
+	bw.recv( matrix, maxBufferWidth * maxBufferHeight +1 );
+
+	double* answer = gausse_solve(matrix, reinterpret_cast<int*>(matrix)[0], reinterpret_cast<int*>(matrix)[1]);
 
 	//if (debug)
-		cout << "Serverside: " << width << "x" << height << endl;
-	
-	double* matrix = (double*)malloc( sizeof(double) * height*width );
-	double* k	   = (double*)malloc( sizeof(double) * height );
+		print_matrix(matrix, answer, reinterpret_cast<int*>(matrix)[0], reinterpret_cast<int*>(matrix)[1]);
 
-	bw.recv( matrix, width*height );
-	bw.recv( k, height );
-	
-	double* answer = gausse_solve(matrix, k, width, height);
-
-	//if (debug)
-		print_matrix(matrix, k, answer, width, height);
-
-	bw.send( answer, height );
+	bw.send( answer, reinterpret_cast<int*>(matrix)[1] );
 	
 	//if (debug)
     	cout << "Send answer complete." << endl;
